@@ -2,7 +2,7 @@ from time import time
 
 from syncplay.kodi import player, setplaystate
 from syncplay.socket import send
-from syncplay.util import getrtt, gs, gsi
+from syncplay.util import getrtt, gs, gsi, gsb  # Added gsb import
 
 _cstate = {
     "ping": {
@@ -58,18 +58,41 @@ def handle(sstate: dict):
         del _cstate["ignoringOnTheFly"]
     # Don't check for time difference if we are seeking
     elif not seeking:
-        # Can't use math.isclose() as tolerance increases over higher numbers
-        # https://www.desmos.com/calculator/3xv5xnh1hu
-        # Defined in settings in msp
-        if abs(sstate["playstate"]["position"] - _cstate["playstate"]["position"]) >= float(gsi("tolerance"))/1000:
-            # NOTE: This will cause the Kodi syncplay client to literally be more
-            # synced than the actual syncplay client and will allow the tolerance
-            # to be configurable on a per-client basis, favoring the client with
-            # the least tolerance. While on the server this does say "x seeked..",
-            # it is actually setting the time difference to be within the tolerance
-            setplaystate(sstate["playstate"], _cstate["playstate"])
-            # Callback will cause a dispatch since iotf won't be set, and if it is,
-            # the contents of dispatch will be changed
+        # Calculate time difference (positive = we're behind, negative = we're ahead)
+        diff = sstate["playstate"]["position"] - _cstate["playstate"]["position"]
+        tolerance_ms = float(gsi("tolerance"))
+        tolerance_seconds = tolerance_ms / 1000
+        
+        # Get rewind threshold from settings with fallback
+        try:
+            rewind_threshold_setting = gs("rewindThreshold")
+            rewind_threshold = float(rewind_threshold_setting) if rewind_threshold_setting else 3.0
+        except:
+            rewind_threshold = 3.0
+        
+        # Ensure rewind threshold is at least 2x tolerance
+        rewind_threshold = max(tolerance_seconds * 2, rewind_threshold)
+        
+        # Check if rewind is disabled
+        try:
+            rewind_disabled = gsb("disableRewind")
+        except:
+            rewind_disabled = False
+        
+        # Add network latency compensation
+        rtt_compensation = _cstate["ping"]["clientRtt"] / 2 if _cstate["ping"]["clientRtt"] > 0 else 0
+        effective_tolerance = tolerance_seconds + rtt_compensation
+        
+        # Only perform sync actions if difference is significant
+        if abs(diff) > effective_tolerance:
+            # If we're behind by more than tolerance, sync forward
+            if diff > effective_tolerance:
+                setplaystate(sstate["playstate"], _cstate["playstate"])
+            # If we're ahead by more than rewind threshold, sync backward (only if rewind not disabled)
+            elif diff < -rewind_threshold and not rewind_disabled:
+                setplaystate(sstate["playstate"], _cstate["playstate"])
+            # If we're only slightly ahead (between tolerance and rewind threshold), ignore
+            # This prevents constant micro-rewinds that cause the annoying behavior
 
     send({"State": _cstate})
 

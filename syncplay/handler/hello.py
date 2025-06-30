@@ -7,7 +7,7 @@ from syncplay.util import gs
 def dispatch():
     send({"Hello": {
         "username": gs("user"),
-        "password": md5(gs("password").encode()).hexdigest() if gs("password") is not "" else "",
+        "password": md5(gs("password").encode()).hexdigest() if gs("password") != "" else "",
         "room": {"name": gs("room")},
         # Version is protocol version
         "version": "1.2.7",

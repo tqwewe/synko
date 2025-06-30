@@ -51,10 +51,22 @@
 				</setting>
 				<setting label="32010" id="tolerance" type="integer" help="">
 					<level>2</level>
-					<default>500</default>
+					<default>1000</default>
 					<control type="edit" format="integer">
 						<heading>32010</heading>
 					</control>
+				</setting>
+				<setting label="32012" id="rewindThreshold" type="number" help="">
+					<level>2</level>
+					<default>3.0</default>
+					<control type="edit" format="number">
+						<heading>32012</heading>
+					</control>
+				</setting>
+				<setting label="32013" id="disableRewind" type="boolean" help="">
+					<level>2</level>
+					<default>false</default>
+					<control type="toggle"></control>
 				</setting>
 				<setting label="32011" id="seek" type="integer" help="">
 					<level>2</level>

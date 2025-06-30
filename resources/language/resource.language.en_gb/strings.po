@@ -59,6 +59,14 @@ msgctxt "#32010"
 msgid "Tolerance (ms)"
 msgstr ""
 
-msgctxt "#32010"
+msgctxt "#32011"
 msgid "Seek tolerance (ms)"
+msgstr ""
+
+msgctxt "#32012"
+msgid "Rewind threshold (s)"
+msgstr ""
+
+msgctxt "#32013"
+msgid "Disable rewind on desync"
 msgstr ""

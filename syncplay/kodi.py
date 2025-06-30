@@ -5,7 +5,7 @@ from xbmcgui import Dialog
 
 from syncplay.handler import set, state, hello
 from syncplay.socket import connect, disconnect
-from syncplay.util import gsi
+from syncplay.util import gs, gsi, gsb  # Added gs and gsb imports
 
 
 class _Player(Player):
@@ -52,29 +52,73 @@ class _Player(Player):
 player = _Player()
 
 def setplaystate(sps: dict, cps: dict):
-    if player.isPlaying():
-        if sps["paused"] != cps["paused"]:
-            player.pause()
-            Dialog().notification(
-                "Syncplay", 
-                "{} {}".format(sps["setBy"], "paused" if sps["paused"] else "resumed"),
-                sound=False
-            )
-        if "doSeek" in sps and sps["doSeek"]:
+    if not player.isPlaying():
+        return
+        
+    # Handle pause/unpause changes
+    if sps["paused"] != cps["paused"]:
+        player.pause()
+        Dialog().notification(
+            "Syncplay", 
+            "{} {}".format(sps["setBy"], "paused" if sps["paused"] else "resumed"),
+            sound=False
+        )
+    
+    # Handle explicit seeks (when someone manually seeks)
+    if "doSeek" in sps and sps["doSeek"]:
+        player.seekTime(sps["position"])
+        Dialog().notification(
+            "Syncplay",
+            "{} seeked to {}".format(
+                sps["setBy"],
+                str(timedelta(seconds=round(sps["position"])))
+            ),
+            sound=False
+        )
+    else:
+        # Handle automatic sync due to time differences
+        # Calculate difference: positive = we're behind, negative = we're ahead
+        diff = sps["position"] - cps["position"]
+        tolerance_seconds = float(gsi("tolerance")) / 1000
+        
+        # Get rewind threshold from settings with fallback
+        try:
+            rewind_threshold_setting = gs("rewindThreshold")
+            rewind_threshold = float(rewind_threshold_setting) if rewind_threshold_setting else 3.0
+        except:
+            rewind_threshold = 3.0
+        
+        # Ensure rewind threshold is at least 2x tolerance
+        rewind_threshold = max(tolerance_seconds * 2, rewind_threshold)
+        
+        # Check if rewind is disabled
+        try:
+            rewind_disabled = gsb("disableRewind")
+        except:
+            rewind_disabled = False
+        
+        if diff > tolerance_seconds:
+            # We're behind - seek forward to server position
             player.seekTime(sps["position"])
             Dialog().notification(
                 "Syncplay",
-                "{} seeked to {}".format(
-                    sps["setBy"],
-                    str(timedelta(seconds=round(sps["position"])))
-                ),
+                "Syncing forward ({:.1f}s behind) with {}".format(diff, sps["setBy"]),
                 sound=False
             )
-        else:
-            # Seek to the oldest timestamp so that no content is lost
-            player.seekTime(min(sps["position"], cps["position"]))
+        elif diff < -rewind_threshold and not rewind_disabled:
+            # We're way ahead - seek back to server position (only if rewind not disabled)
+            player.seekTime(sps["position"])
             Dialog().notification(
                 "Syncplay",
-                "Time difference with {}".format(sps["setBy"]),
+                "Syncing back ({:.1f}s ahead) with {}".format(abs(diff), sps["setBy"]),
                 sound=False
             )
+        elif diff < -tolerance_seconds and rewind_disabled:
+            # Show notification when we're ahead but rewind is disabled
+            Dialog().notification(
+                "Syncplay",
+                "Ahead by {:.1f}s (rewind disabled)".format(abs(diff)),
+                sound=False
+            )
+        # If we're only slightly ahead (between tolerance and rewind threshold), do nothing
+        # This prevents the annoying constant rewinding
